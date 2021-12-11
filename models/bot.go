@@ -102,12 +102,12 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 			}
 		}
 	}
-	switch msg {
-	default:
-		{
-			regex := "^\\d{6}$"
-			reg := regexp.MustCompile(regex)
-			if Config.VIP {
+	if Config.VIP {
+		switch msg {
+		default:
+			{
+				regex := "^\\d{6}$"
+				reg := regexp.MustCompile(regex)
 				if reg.MatchString(msg) {
 					logs.Info("进入验证码阶段")
 					addr := Config.Jdcurl
@@ -181,14 +181,13 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 					}
 				}
 			}
-		}
-		{
-			if Config.VIP {
+			{
 				ist := findMapKey3(string(sender.UserID), pcodes)
 				if strings.EqualFold(ist, "true") {
 					regular := `^(13[0-9]|14[01456879]|15[0-35-9]|16[2567]|17[0-8]|18[0-9]|19[0-35-9])\d{8}$`
-					reg := regexp.MustCompile(regular)
+					reg := regexp.MustCompile(regular)                
 					if reg.MatchString(msg) {
+                        sender.Reply("请耐心等待...")
 						addr := Config.Jdcurl
 						req := httplib.Post(addr + "/api/SendSMS")
 						req.Header("content-type", "application/json")
@@ -240,10 +239,8 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 					}
 				}
 			}
-		}
-		//识别登录
-		{
-			if Config.VIP {
+			//识别登录
+			{
 				if strings.Contains(msg, "登录") || strings.Contains(msg, "登陆") {
 					var tabcount int64
 					addr := Config.Jdcurl
@@ -264,10 +261,8 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 
 				}
 			}
-		}
-		{
-			//发财挖宝
-			if Config.VIP {
+			{
+				//发财挖宝
 				//dyj
 				inviterId := regexp.MustCompile(`inviterId=(\S+)(&|&amp;)inviterCode`).FindStringSubmatch(msg)
 				inviterCode := regexp.MustCompile(`inviterCode=(\S+)(&|&amp;)utm_user`).FindStringSubmatch(msg)
@@ -287,23 +282,7 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 					return nil
 				}
 			}
-		}
-		{ //沃邮箱
-			ss := regexp.MustCompile(`https://nyan.mail.*3D`).FindStringSubmatch(msg)
-			if len(ss) > 0 {
-				var u User
-				if db.Where("number = ?", sender.UserID).First(&u).Error != nil {
-					return 0
-				}
-				db.Model(u).Updates(map[string]interface{}{
-					"womail": ss[0],
-				})
-				sender.Reply(fmt.Sprintf("沃邮箱提交成功!"))
-				return nil
-			}
-		}
-		{
-			if Config.VIP {
+			{
 				if strings.Contains(msg, "口令") {
 					rsp := httplib.Post("http://jd.zack.xin/api/jd/ulink.php")
 					rsp.Param("url", msg)
@@ -322,13 +301,37 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 					}
 				}
 			}
+
+		}
+	}
+
+	switch msg {
+	default:
+
+		{ //沃邮箱
+			ss := regexp.MustCompile(`https://nyan.mail.*3D`).FindStringSubmatch(msg)
+			if len(ss) > 0 {
+				var u User
+				if db.Where("number = ?", sender.UserID).First(&u).Error != nil {
+					return 0
+				}
+				db.Model(u).Updates(map[string]interface{}{
+					"womail": ss[0],
+				})
+				sender.Reply(fmt.Sprintf("沃邮箱提交成功!"))
+				return nil
+			}
 		}
 		{
-			ss := regexp.MustCompile(`pin=([^;=\s]+);wskey=([^;=\s]+)`).FindAllStringSubmatch(msg, -1)
-			if len(ss) > 0 {
-				for _, s := range ss {
-					wkey := "pin=" + s[1] + ";wskey=" + s[2] + ";"
-					//rsp := cmd(fmt.Sprintf(`python3 test.py "%s"`, wkey), &Sender{})
+			if strings.Contains(msg, "wskey=") {
+				logs.Info(msg + "开始WSKEY登录")
+				wsKey := FetchJdCookieValue("wskey", msg)
+				ptPin := FetchJdCookieValue("pt_pin", msg)
+				if len(ptPin) == 0 {
+					ptPin = FetchJdCookieValue("pin", msg)
+				}
+				if len(wsKey) > 0 && len(ptPin) > 0 {
+					wkey := "pin=" + ptPin + ";wskey=" + wsKey + ";"
 					rsp, err := getKey(wkey)
 					if err != nil {
 						logs.Error(err)
@@ -342,7 +345,7 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 						ck := JdCookie{
 							PtPin: ptPin,
 							PtKey: ptKey,
-							WsKey: s[2],
+							WsKey: wsKey,
 						}
 						if CookieOK(&ck) {
 
@@ -400,6 +403,82 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 					}
 				}
 			}
+			//ss := regexp.MustCompile(`pin=([^;=\s]+);wskey=([^;=\s]+)`).FindAllStringSubmatch(msg, -1)
+			//if len(ss) > 0 {
+			//	for _, s := range ss {
+			//		wkey := "pin=" + s[1] + ";wskey=" + s[2] + ";"
+			//		//rsp := cmd(fmt.Sprintf(`python3 test.py "%s"`, wkey), &Sender{})
+			//		rsp, err := getKey(wkey)
+			//		if err != nil {
+			//			logs.Error(err)
+			//		}
+			//		if strings.Contains(rsp, "fake_") {
+			//			logs.Error("wskey错误")
+			//			sender.Reply(fmt.Sprintf("wskey错误 除京东APP皆不可用"))
+			//		} else {
+			//			ptKey := FetchJdCookieValue("pt_key", rsp)
+			//			ptPin := FetchJdCookieValue("pt_pin", rsp)
+			//			ck := JdCookie{
+			//				PtPin: ptPin,
+			//				PtKey: ptKey,
+			//				WsKey: s[2],
+			//			}
+			//			if CookieOK(&ck) {
+			//
+			//				if sender.IsQQ() {
+			//					ck.QQ = sender.UserID
+			//				} else if sender.IsTG() {
+			//					ck.Telegram = sender.UserID
+			//				}
+			//				if nck, err := GetJdCookie(ck.PtPin); err == nil {
+			//					nck.InPool(ck.PtKey)
+			//					if nck.WsKey == "" || len(nck.WsKey) == 0 {
+			//						if sender.IsQQ() {
+			//							ck.Update(QQ, ck.QQ)
+			//						}
+			//						nck.Update(WsKey, ck.WsKey)
+			//						msg := fmt.Sprintf("写入WsKey，并更新账号%s", ck.PtPin)
+			//						sender.Reply(fmt.Sprintf(msg))
+			//						(&JdCookie{}).Push(msg)
+			//						logs.Info(msg)
+			//					} else {
+			//						if nck.WsKey == ck.WsKey {
+			//							msg := fmt.Sprintf("重复写入")
+			//							sender.Reply(fmt.Sprintf(msg))
+			//							(&JdCookie{}).Push(msg)
+			//							logs.Info(msg)
+			//						} else {
+			//							nck.Updates(JdCookie{
+			//								WsKey: ck.WsKey,
+			//							})
+			//							msg := fmt.Sprintf("更新WsKey，并更新账号%s", ck.PtPin)
+			//							sender.Reply(fmt.Sprintf(msg))
+			//							(&JdCookie{}).Push(msg)
+			//							logs.Info(msg)
+			//						}
+			//					}
+			//
+			//				} else {
+			//					NewJdCookie(&ck)
+			//
+			//					msg := fmt.Sprintf("添加账号，账号名:%s", ck.PtPin)
+			//
+			//					if sender.IsQQ() {
+			//						ck.Update(QQ, ck.QQ)
+			//					}
+			//
+			//					sender.Reply(fmt.Sprintf(msg))
+			//					sender.Reply(ck.Query())
+			//					(&JdCookie{}).Push(msg)
+			//				}
+			//			}
+			//			go func() {
+			//				Save <- &JdCookie{}
+			//			}()
+			//			return nil
+			//		}
+			//	}
+			//}
 		}
 		//{ //
 		//	ss := regexp.MustCompile(`pt_key=([^;=\s]+);pt_pin=([^;=\s]+)`).FindAllStringSubmatch(msg, -1)
@@ -644,7 +723,7 @@ func startfcwb(ine string, red string) (num int, num1 int, f bool) {
 	n := 0
 	cks := GetJdCookies()
 	for i := len(cks); i > 0; i-- {
-		if k > 125 {
+		if k > 30 {
 			return k, n, true
 		}
 		time.Sleep(time.Second * time.Duration(3))

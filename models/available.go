@@ -126,6 +126,7 @@ type UserInfoResult struct {
 }
 
 func initCookie() {
+	(&JdCookie{}).Push("开始账号检测")
 	cks := GetJdCookies()
 	for i := range cks {
 		time.Sleep(time.Second * time.Duration(Config.Later))
@@ -134,6 +135,7 @@ func initCookie() {
 			cks[i].OutPool()
 		}
 	}
+	(&JdCookie{}).Push("账号检测结束")
 	//for i := 0; i < l-1; i++ {
 	//	if cks[i].Available == True && !CookieOK(&cks[i]) {
 	//		if pt_key, err := cks[i].OutPool(); err == nil && pt_key != "" {
@@ -194,6 +196,7 @@ func updateCookie() {
 				logs.Error(err)
 			}
 			if strings.Contains(rsp, "fake") {
+				yy++
 				ck.Push(fmt.Sprintf("Wskey失效账号，%s", ck.PtPin))
 				(&JdCookie{}).Push(fmt.Sprintf("Wskey失效，%s", ck.PtPin))
 			} else {
@@ -314,10 +317,54 @@ func CookieOK(ck *JdCookie) bool {
 	//	Config.IFC = false
 	//}
 	switch ui.Retcode {
-	//case "1001": //ck.BeanNum
-	//	if ui.Msg == "not login" {
-	//		return false
-	//	}
+	case "1001": //ck.BeanNum
+		if ui.Msg == "not login" {
+			if ck.Available == True {
+				ck.Update(Available, False)
+				logs.Info(ck.Available)
+				if Config.Wskey {
+					if len(ck.WsKey) > 0 {
+						var pinky = fmt.Sprintf("pin=%s;wskey=%s;", ck.PtPin, ck.WsKey)
+						msg, err := getKey(pinky)
+						if err != nil {
+							logs.Error(err)
+						}
+						//JdCookie{}.Push(fmt.Sprintf("自动转换wskey---%s", msg))
+						//缺少错误判断
+						if strings.Contains(msg, "错误") {
+							ck.Push(fmt.Sprintf("Wskey失效账号，%s", ck.PtPin))
+							(&JdCookie{}).Push(fmt.Sprintf("Wskey失效，%s", ck.PtPin))
+						} else {
+							ptKey := FetchJdCookieValue("pt_key", msg)
+							ptPin := FetchJdCookieValue("pt_pin", msg)
+							logs.Info(ptPin)
+							ck := JdCookie{
+								PtKey: ptKey,
+								PtPin: ptPin,
+							}
+							if nck, err := GetJdCookie(ptPin); err == nil {
+								nck.InPool(ck.PtKey)
+								msg := fmt.Sprintf("更新账号，%s", ck.PtPin)
+								(&JdCookie{}).Push(msg)
+								logs.Info(msg)
+							} else {
+								//nck.Update(Available, False)
+								(&JdCookie{}).Push(fmt.Sprintf("转换失败，%s", nck.PtPin))
+							}
+						}
+
+					} else {
+						ck.Push(fmt.Sprintf("失效账号，%s", ck.Nickname))
+						JdCookie{}.Push(fmt.Sprintf("失效账号，%s", ck.Nickname))
+					}
+				} else {
+					ck.Push(fmt.Sprintf("失效账号，%s", ck.Nickname))
+					JdCookie{}.Push(fmt.Sprintf("失效账号，%s", ck.Nickname))
+				}
+
+			}
+			return false
+		}
 	case "0":
 		if url.QueryEscape(ui.Data.UserInfo.BaseInfo.CurPin) != ck.PtPin {
 			return av2(ck)
